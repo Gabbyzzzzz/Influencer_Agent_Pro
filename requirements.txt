@@ -1,0 +1,7 @@
+streamlit
+google-genai
+google-api-python-client
+sqlalchemy
+python-dotenv
+pandas
+playwright
