@@ -7,8 +7,14 @@ from utils.logger import get_logger
 from config import FIT_SCORE_THRESHOLD, MAX_CONCURRENT_API, EMAIL_WORD_LIMIT
 
 load_dotenv()
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 logger = get_logger("writer")
+
+_gemini_client = None
+def _get_client():
+    global _gemini_client
+    if _gemini_client is None:
+        _gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    return _gemini_client
 
 
 class WriterAgent:
@@ -48,7 +54,7 @@ class WriterAgent:
         async with self.semaphore:
             try:
                 response = await asyncio.to_thread(
-                    client.models.generate_content,
+                    _get_client().models.generate_content,
                     model="gemini-2.0-flash",
                     contents=prompt
                 )

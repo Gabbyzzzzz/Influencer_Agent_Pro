@@ -12,8 +12,14 @@ from utils.logger import get_logger
 from config import MAX_CONCURRENT_API, SEARCH_RESULTS_PER_QUERY, QUERIES_PER_PLATFORM, GLOBAL_URL_BLACKLIST
 
 load_dotenv()
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 logger = get_logger("scout")
+
+_gemini_client = None
+def _get_client():
+    global _gemini_client
+    if _gemini_client is None:
+        _gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    return _gemini_client
 
 
 class ScoutAgent:
@@ -65,7 +71,7 @@ BAD examples (DO NOT do this):
 Output format: One query per line, no numbering, no extra text."""
 
         response = await asyncio.to_thread(
-            client.models.generate_content,
+            _get_client().models.generate_content,
             model="gemini-2.0-flash",
             contents=prompt
         )
