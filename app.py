@@ -1,4 +1,9 @@
 import streamlit as st
+# config 必须在 agents 之前导入（注入 Streamlit secrets 到环境变量）
+from config import (
+    SUPPORTED_PLATFORMS, DEFAULT_PLATFORMS,
+    FIT_SCORE_THRESHOLD, TOP_PICK_THRESHOLD, DEFAULT_MIN_SCORE
+)
 import asyncio
 import pandas as pd
 from datetime import datetime
@@ -6,10 +11,6 @@ from database import get_db, Influencer, SearchBatch
 from agents.scout import ScoutAgent
 from agents.analyst import AnalystAgent
 from agents.writer import WriterAgent
-from config import (
-    SUPPORTED_PLATFORMS, DEFAULT_PLATFORMS,
-    FIT_SCORE_THRESHOLD, TOP_PICK_THRESHOLD, DEFAULT_MIN_SCORE
-)
 
 st.set_page_config(page_title="Influencer Agent Pro", layout="wide", page_icon="🐾")
 

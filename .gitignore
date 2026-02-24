@@ -1,6 +1,11 @@
 .env
 data/memory.db
+data/agent.log
 .venv/
 __pycache__/
 .DS_Store
 *.csv
+*.pyc
+.idea/
+.claude/
+.streamlit/secrets.toml

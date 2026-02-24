@@ -1,7 +1,6 @@
-streamlit
-google-genai
-google-api-python-client
-sqlalchemy
-python-dotenv
-pandas
-playwright
+streamlit==1.53.0
+google-genai==1.59.0
+google-api-python-client==2.188.0
+sqlalchemy==2.0.45
+python-dotenv==1.2.1
+pandas==2.3.3

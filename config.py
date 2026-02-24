@@ -1,4 +1,18 @@
 # 集中管理所有可调参数
+import os
+from dotenv import load_dotenv
+
+# 1. 加载本地 .env（开发环境）
+load_dotenv()
+
+# 2. Streamlit Cloud secrets → 注入环境变量（部署环境）
+try:
+    import streamlit as st
+    for key, val in st.secrets.items():
+        if isinstance(val, str) and key not in os.environ:
+            os.environ[key] = val
+except Exception:
+    pass
 
 # Agent 配置
 BATCH_SIZE = 5
