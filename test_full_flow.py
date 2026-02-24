@@ -16,13 +16,16 @@ async def main():
 
     print("\n--- 🕵️ Agent 执行结果预览 ---")
     from database import get_db, Influencer
-    db = get_db()
-    top_picks = db.query(Influencer).order_by(Influencer.fit_score.desc()).limit(3).all()
+    with get_db() as db:
+        top_picks = db.query(Influencer).order_by(Influencer.fit_score.desc()).limit(3).all()
 
-    for i, inf in enumerate(top_picks, 1):
-        print(f"{i}. {inf.name}")
-        print(f"   契合度: {inf.fit_score} | 预测价格: ${inf.price_min}-${inf.price_max}")
-        print(f"   理由: {inf.fit_reason[:100]}...\n")
+        for i, inf in enumerate(top_picks, 1):
+            print(f"{i}. {inf.name}")
+            score = inf.fit_score or "未评分"
+            price = f"${inf.price_min:,.0f}-${inf.price_max:,.0f}" if inf.price_min else "未定价"
+            reason = (inf.fit_reason or "无")[:100]
+            print(f"   契合度: {score} | 预测价格: {price}")
+            print(f"   理由: {reason}\n")
 
 
 if __name__ == "__main__":
