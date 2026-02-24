@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 # config 必须在 agents 之前导入（注入 Streamlit secrets 到环境变量）
 from config import (
@@ -13,6 +14,15 @@ from agents.analyst import AnalystAgent
 from agents.writer import WriterAgent
 
 st.set_page_config(page_title="Influencer Agent Pro", layout="wide", page_icon="🐾")
+
+# 检查必要的 API 密钥
+_required_keys = ["GEMINI_API_KEY", "GOOGLE_API_KEY", "SEARCH_ENGINE_ID"]
+_missing = [k for k in _required_keys if not os.getenv(k)]
+if _missing:
+    st.error(f"缺少必要的 API 密钥: {', '.join(_missing)}")
+    st.info("请在 Streamlit Cloud → Settings → Secrets 中配置，格式：\n\n"
+            '```\nGEMINI_API_KEY = "你的密钥"\nGOOGLE_API_KEY = "你的密钥"\nSEARCH_ENGINE_ID = "你的ID"\n```')
+    st.stop()
 
 # ======================== 辅助函数 ========================
 

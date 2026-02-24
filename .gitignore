@@ -1,6 +1,7 @@
 .env
 data/memory.db
 data/agent.log
+agents/data/
 .venv/
 __pycache__/
 .DS_Store
