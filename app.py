@@ -1,6 +1,6 @@
 import os
 import streamlit as st
-# config 必须在 agents 之前导入（注入 Streamlit secrets 到环境变量）
+# config must be imported before agents (injects Streamlit secrets into env vars)
 from config import (
     SUPPORTED_PLATFORMS, DEFAULT_PLATFORMS,
     FIT_SCORE_THRESHOLD, TOP_PICK_THRESHOLD, DEFAULT_MIN_SCORE
@@ -13,30 +13,167 @@ from agents.scout import ScoutAgent
 from agents.analyst import AnalystAgent
 from agents.writer import WriterAgent
 
-st.set_page_config(page_title="Influencer Agent Pro", layout="wide", page_icon="🐾")
+st.set_page_config(
+    page_title="Influencer Agent Pro",
+    layout="wide",
+    page_icon="✦",
+    initial_sidebar_state="expanded",
+)
 
-# 检查必要的 API 密钥
+# ======================== Custom CSS ========================
+
+st.markdown("""
+<style>
+    /* --- Global --- */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    /* --- Header area --- */
+    .main-header {
+        padding: 1.5rem 0 1rem 0;
+        border-bottom: 1px solid #E2E8F0;
+        margin-bottom: 1.5rem;
+    }
+    .main-header h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #1E293B;
+        margin: 0;
+        letter-spacing: -0.02em;
+    }
+    .main-header p {
+        color: #64748B;
+        font-size: 0.9rem;
+        margin: 0.25rem 0 0 0;
+    }
+
+    /* --- Metric cards --- */
+    [data-testid="stMetric"] {
+        background: white;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: #64748B;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: #1E293B;
+    }
+
+    /* --- Sidebar --- */
+    [data-testid="stSidebar"] {
+        background: #FFFFFF;
+        border-right: 1px solid #E2E8F0;
+    }
+    [data-testid="stSidebar"] .stMarkdown h1 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #1E293B;
+        letter-spacing: -0.01em;
+    }
+
+    /* --- Buttons --- */
+    .stButton > button {
+        border-radius: 8px;
+        font-weight: 500;
+        font-size: 0.85rem;
+        padding: 0.5rem 1rem;
+        transition: all 0.15s ease;
+    }
+    .stButton > button[kind="primary"] {
+        background: #6366F1;
+        border: none;
+        color: white;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background: #4F46E5;
+        box-shadow: 0 2px 8px rgba(99,102,241,0.3);
+    }
+
+    /* --- Data editor --- */
+    [data-testid="stDataFrame"] {
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    /* --- Section dividers --- */
+    .section-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #334155;
+        padding: 0.5rem 0;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .section-title .step-badge {
+        background: #6366F1;
+        color: white;
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 0.15rem 0.5rem;
+        border-radius: 4px;
+        letter-spacing: 0.03em;
+    }
+
+    /* --- Top pick banner --- */
+    .top-pick {
+        background: linear-gradient(135deg, #F0FDF4, #DCFCE7);
+        border: 1px solid #BBF7D0;
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        margin: 0.75rem 0;
+    }
+    .top-pick strong { color: #166534; }
+    .top-pick .label { color: #15803D; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+
+    /* --- Toast / status --- */
+    [data-testid="stStatusWidget"] {
+        border-radius: 12px;
+    }
+
+    /* --- Hide default decorations --- */
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
+</style>
+""", unsafe_allow_html=True)
+
+# ======================== API Key Check ========================
+
 _required_keys = ["GEMINI_API_KEY", "GOOGLE_API_KEY", "SEARCH_ENGINE_ID"]
 _missing = [k for k in _required_keys if not os.getenv(k)]
 if _missing:
-    st.error(f"缺少必要的 API 密钥: {', '.join(_missing)}")
-    st.info("请在 Streamlit Cloud → Settings → Secrets 中配置，格式：\n\n"
-            '```\nGEMINI_API_KEY = "你的密钥"\nGOOGLE_API_KEY = "你的密钥"\nSEARCH_ENGINE_ID = "你的ID"\n```')
+    st.error(f"Missing required API keys: {', '.join(_missing)}")
+    st.info("Configure them in Streamlit Cloud → Settings → Secrets:\n\n"
+            '```\nGEMINI_API_KEY = "your_key"\nGOOGLE_API_KEY = "your_key"\nSEARCH_ENGINE_ID = "your_id"\n```')
     st.stop()
 
-# ======================== 辅助函数 ========================
+# ======================== Helpers ========================
 
 def format_followers(count, verified):
     if not verified and count == 0:
-        return "待验证"
+        return "Unverified"
     return f"{count:,}"
 
 def format_price(price_min, price_max):
     if price_min is None:
-        return "待计算"
+        return "Pending"
     if price_min == 0 and price_max == 0:
-        return "需确认粉丝数"
-    return f"${price_min:,.0f}-{price_max:,.0f}"
+        return "Needs verification"
+    return f"${price_min:,.0f} – ${price_max:,.0f}"
 
 def format_time(dt):
     if not dt:
@@ -47,10 +184,10 @@ def format_time(dt):
         hours = diff.seconds // 3600
         if hours == 0:
             mins = diff.seconds // 60
-            return f"{mins}分钟前" if mins > 0 else "刚刚"
-        return f"{hours}小时前"
+            return f"{mins}m ago" if mins > 0 else "Just now"
+        return f"{hours}h ago"
     if diff.days == 1:
-        return "昨天"
+        return "Yesterday"
     return dt.strftime("%m/%d %H:%M")
 
 async def _run_search_and_score(brand_req, platforms, brand_name, budget_range):
@@ -60,48 +197,51 @@ async def _run_search_and_score(brand_req, platforms, brand_name, budget_range):
     await analyst.run(brand_req, budget_range=budget_range)
     return new_count
 
-# ======================== 侧边栏 ========================
-st.sidebar.title("🐾 Agent 控制中心")
+# ======================== Sidebar ========================
 
-brand_name = st.sidebar.text_input("品牌名称", placeholder="例如：Nike, Apple...")
+st.sidebar.markdown("#### ✦ Influencer Agent Pro")
+st.sidebar.caption("AI-powered influencer discovery & outreach")
+st.sidebar.markdown("---")
+
+brand_name = st.sidebar.text_input("Brand Name", placeholder="e.g. Nike, Glossier, ForeverFurEver")
 brand_req = st.sidebar.text_area(
-    "需求描述",
-    placeholder="描述产品、目标地区、目标人群、内容风格偏好...",
+    "Brand Requirements",
+    placeholder="Describe your product, target audience, region, content style preferences...",
     height=120
 )
-brand_website = st.sidebar.text_input("品牌网站 (可选)", placeholder="https://...")
-budget_range = st.sidebar.slider("预算范围 (USD)", 0, 50000, (1000, 10000), step=500)
+brand_website = st.sidebar.text_input("Website (optional)", placeholder="https://...")
+budget_range = st.sidebar.slider("Budget Range (USD)", 0, 50000, (1000, 10000), step=500)
 
-platforms = st.sidebar.multiselect("搜索平台", SUPPORTED_PLATFORMS, default=DEFAULT_PLATFORMS)
+platforms = st.sidebar.multiselect("Platforms", SUPPORTED_PLATFORMS, default=DEFAULT_PLATFORMS)
 
-with st.sidebar.expander("⚙️ 高级设置"):
-    min_followers = st.number_input("最低粉丝数", value=0, step=1000)
-    min_fit_score = st.slider("邮件生成最低契合度", 0, 100, FIT_SCORE_THRESHOLD)
+with st.sidebar.expander("Advanced Settings"):
+    min_followers = st.number_input("Min Followers", value=0, step=1000)
+    min_fit_score = st.slider("Min Fit Score for Emails", 0, 100, FIT_SCORE_THRESHOLD)
 
 st.sidebar.markdown("---")
 
-# 启动搜索
-if st.sidebar.button("🚀 搜索 + 评分", width="stretch"):
+# Launch search
+if st.sidebar.button("Search + Score", type="primary", icon="🔍", use_container_width=True):
     if not brand_req:
-        st.sidebar.error("请先输入需求描述！")
+        st.sidebar.error("Please enter brand requirements first.")
     elif not platforms:
-        st.sidebar.error("请至少选择一个搜索平台！")
+        st.sidebar.error("Please select at least one platform.")
     else:
-        with st.status("Agent 协作中...", expanded=True) as status:
-            st.write(f"🕵️ Scout 正在搜索 {', '.join(platforms)} 平台...")
-            st.write("📊 搜索完成后 Analyst 将自动评分...")
+        with st.status("Agents working...", expanded=True) as status:
+            st.write("Scout Agent is searching across platforms...")
+            st.write("Analyst Agent will score candidates automatically...")
             try:
                 new_count = asyncio.run(
                     _run_search_and_score(brand_req, platforms, brand_name, budget_range)
                 )
-                st.write(f"   ✅ 发现 {new_count} 位新候选人，评分完成")
+                st.write(f"Found {new_count} new candidates — scoring complete.")
             except Exception as e:
-                st.error(f"搜索/评分失败: {e}")
-            status.update(label="✅ 搜索 + 评分完成！", state="complete")
+                st.error(f"Search/scoring failed: {e}")
+            status.update(label="Search + Score complete", state="complete")
 
-# 搜索历史
+# Search history
 st.sidebar.markdown("---")
-with st.sidebar.expander("📜 搜索历史", expanded=False):
+with st.sidebar.expander("Search History", expanded=False):
     with get_db() as db:
         recent_batches = db.query(SearchBatch).order_by(SearchBatch.created_at.desc()).limit(10).all()
         if recent_batches:
@@ -109,25 +249,33 @@ with st.sidebar.expander("📜 搜索历史", expanded=False):
                 bcol1, bcol2 = st.sidebar.columns([4, 1])
                 with bcol1:
                     st.caption(
-                        f"{format_time(b.created_at)} · {b.platforms} · {b.candidate_count or 0}人"
+                        f"{format_time(b.created_at)} · {b.platforms} · {b.candidate_count or 0} found"
                     )
                 with bcol2:
-                    if st.button("🗑️", key=f"del_batch_{b.id}", help="删除该批次"):
+                    if st.button("×", key=f"del_batch_{b.id}", help="Delete this batch"):
                         db.query(Influencer).filter_by(batch_id=b.id).delete()
                         db.query(SearchBatch).filter_by(id=b.id).delete()
                         db.commit()
                         st.rerun()
         else:
-            st.caption("暂无搜索记录")
+            st.caption("No search history yet")
 
-# ======================== 主界面 — 线性流程 ========================
-st.title("🤖 网红营销智能体 (Pro)")
+# ======================== Main Content ========================
+
+# Header
+st.markdown("""
+<div class="main-header">
+    <h1>Influencer Agent Pro</h1>
+    <p>Discover, evaluate, and reach out to influencers — powered by AI agents</p>
+</div>
+""", unsafe_allow_html=True)
 
 with get_db() as db:
     all_inf = db.query(Influencer).order_by(Influencer.fit_score.desc()).all()
 
     if not all_inf:
-        st.info("👈 请在左侧配置品牌需求，然后点击「搜索 + 评分」开始。")
+        st.markdown("")
+        st.info("Configure your brand requirements in the sidebar, then click **Search + Score** to get started.")
         st.stop()
 
     confirmed_count = sum(1 for i in all_inf if i.is_confirmed)
@@ -136,46 +284,47 @@ with get_db() as db:
     avg_score = sum(i.fit_score for i in scored) / len(scored) if scored else 0
 
     # ================================================================
-    # STEP 1: 概览
+    # Metrics
     # ================================================================
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("总候选人", len(all_inf))
-    col2.metric("平均契合度", f"{avg_score:.0f}")
-    col3.metric("已确认", confirmed_count)
-    col4.metric("已生成邮件", draft_count)
+    col1.metric("Candidates", len(all_inf))
+    col2.metric("Avg Fit Score", f"{avg_score:.0f}")
+    col3.metric("Confirmed", confirmed_count)
+    col4.metric("Emails Drafted", draft_count)
 
-    # 最佳推荐
+    # Top pick
     top_pick = all_inf[0]
     if top_pick.fit_score and top_pick.fit_score >= TOP_PICK_THRESHOLD:
-        st.success(
-            f"🌟 **最佳推荐: {top_pick.name}** | "
-            f"平台: {top_pick.platform} | "
-            f"粉丝: {format_followers(top_pick.follower_count, top_pick.followers_verified)} | "
-            f"契合度: {top_pick.fit_score} — "
-            f"_{top_pick.fit_reason or ''}_"
-        )
+        st.markdown(f"""
+        <div class="top-pick">
+            <span class="label">Top Pick</span><br>
+            <strong>{top_pick.name}</strong> &nbsp;·&nbsp; {top_pick.platform} &nbsp;·&nbsp;
+            {format_followers(top_pick.follower_count, top_pick.followers_verified)} followers &nbsp;·&nbsp;
+            Score: {top_pick.fit_score} &nbsp;—&nbsp;
+            <em>{top_pick.fit_reason or ''}</em>
+        </div>
+        """, unsafe_allow_html=True)
 
     # ================================================================
-    # STEP 2: 选择候选人
+    # STEP 1: Select Candidates
     # ================================================================
     st.markdown("---")
-    st.subheader("Step 1 · 选择候选人")
+    st.markdown('<div class="section-title"><span class="step-badge">STEP 1</span> Select Candidates</div>', unsafe_allow_html=True)
 
-    # 视图切换 + 筛选（紧凑一行）
+    # Filters
     view_col, plat_col, score_col = st.columns([1, 1, 1])
 
     with view_col:
         all_batches = db.query(SearchBatch).order_by(SearchBatch.created_at.desc()).all()
-        view_options = ["全部候选人"]
+        view_options = ["All Candidates"]
         batch_map = {}
         for b in all_batches[:5]:
-            label = f"{format_time(b.created_at)} · {b.platforms} ({b.candidate_count or 0}人)"
+            label = f"{format_time(b.created_at)} · {b.platforms} ({b.candidate_count or 0})"
             view_options.append(label)
             batch_map[label] = b.id
-        view_choice = st.selectbox("查看", view_options, label_visibility="collapsed")
+        view_choice = st.selectbox("View", view_options, label_visibility="collapsed")
 
-    # 根据视图选择确定显示列表
-    if view_choice == "全部候选人":
+    if view_choice == "All Candidates":
         display_list = all_inf
     else:
         batch_id = batch_map.get(view_choice)
@@ -185,14 +334,14 @@ with get_db() as db:
     all_platforms = list(set(i.platform for i in display_list if i.platform))
     with plat_col:
         filter_platforms = st.multiselect(
-            "平台", all_platforms, default=all_platforms, label_visibility="collapsed"
+            "Platform", all_platforms, default=all_platforms, label_visibility="collapsed"
         )
     with score_col:
         score_range = st.slider(
-            "契合度", 0, 100, (DEFAULT_MIN_SCORE, 100), label_visibility="collapsed"
+            "Fit Score", 0, 100, (DEFAULT_MIN_SCORE, 100), label_visibility="collapsed"
         )
 
-    # 应用筛选
+    # Apply filters
     filtered = [
         i for i in display_list
         if (i.platform in filter_platforms)
@@ -200,19 +349,19 @@ with get_db() as db:
         and (i.follower_count or 0) >= min_followers
     ]
 
-    # 构建表格
+    # Build table
     data = []
     for inf in filtered:
         data.append({
             "ID": inf.id,
-            "确认": inf.is_confirmed or False,
-            "名称": inf.name or "",
-            "平台": inf.platform or "",
-            "粉丝数": format_followers(inf.follower_count, inf.followers_verified),
-            "契合度": inf.fit_score if inf.fit_score else 0,
-            "预测价格": format_price(inf.price_min, inf.price_max),
-            "推荐理由": (inf.fit_reason or "")[:40],
-            "链接": inf.url or "",
+            "Select": inf.is_confirmed or False,
+            "Name": inf.name or "",
+            "Platform": inf.platform or "",
+            "Followers": format_followers(inf.follower_count, inf.followers_verified),
+            "Fit Score": inf.fit_score if inf.fit_score else 0,
+            "Est. Price": format_price(inf.price_min, inf.price_max),
+            "Reason": (inf.fit_reason or "")[:40],
+            "URL": inf.url or "",
         })
 
     if data:
@@ -220,73 +369,73 @@ with get_db() as db:
         edited_df = st.data_editor(
             df,
             column_config={
-                "确认": st.column_config.CheckboxColumn("✅"),
-                "链接": st.column_config.LinkColumn("打开"),
-                "契合度": st.column_config.ProgressColumn(min_value=0, max_value=100),
+                "Select": st.column_config.CheckboxColumn(""),
+                "URL": st.column_config.LinkColumn("Link", display_text="Open"),
+                "Fit Score": st.column_config.ProgressColumn(min_value=0, max_value=100),
                 "ID": st.column_config.NumberColumn(width="small"),
             },
-            disabled=["ID", "名称", "平台", "粉丝数", "契合度", "预测价格", "推荐理由"],
+            disabled=["ID", "Name", "Platform", "Followers", "Fit Score", "Est. Price", "Reason"],
             hide_index=True,
-            width="stretch",
+            use_container_width=True,
             key="main_table"
         )
 
-        # 保存 + 下一步 在同一行
+        # Action buttons
         action_col1, action_col2, action_col3 = st.columns([1, 1, 2])
         with action_col1:
-            if st.button("💾 保存选择", width="stretch"):
+            if st.button("Save Selection", icon="💾", use_container_width=True):
                 save_count = 0
                 for _, row in edited_df.iterrows():
                     target = db.query(Influencer).filter_by(id=row['ID']).first()
                     if target:
-                        target.is_confirmed = row['确认']
+                        target.is_confirmed = row['Select']
                         save_count += 1
                 db.commit()
-                st.toast(f"已保存 {save_count} 条！")
+                st.toast(f"Saved {save_count} candidates")
                 st.rerun()
 
-        # 计算待生成邮件的确认候选人
         confirmed_no_draft = [i for i in all_inf if i.is_confirmed and not i.email_draft]
 
         with action_col2:
             if st.button(
-                f"✍️ 生成邮件 ({len(confirmed_no_draft)})",
-                width="stretch",
+                f"Generate Emails ({len(confirmed_no_draft)})",
+                icon="✍️",
+                use_container_width=True,
                 disabled=len(confirmed_no_draft) == 0,
                 type="primary" if confirmed_no_draft else "secondary",
             ):
-                with st.spinner(f"正在为 {len(confirmed_no_draft)} 位候选人生成邮件..."):
+                with st.spinner(f"Writing emails for {len(confirmed_no_draft)} candidates..."):
                     try:
                         writer = WriterAgent()
                         asyncio.run(writer.run(
-                            brand_req or "品牌合作",
+                            brand_req or "Brand partnership",
                             brand_name=brand_name,
                             brand_website=brand_website
                         ))
                         st.rerun()
                     except Exception as e:
-                        st.error(f"邮件生成失败: {e}")
+                        st.error(f"Email generation failed: {e}")
 
         with action_col3:
             if confirmed_no_draft:
-                st.caption(f"⬆️ 先「保存选择」，再点「生成邮件」")
+                st.caption("Save your selection first, then generate emails")
             elif confirmed_count > 0 and draft_count > 0:
-                st.caption("✅ 邮件已就绪，请往下查看")
+                st.caption("Emails are ready — scroll down to preview")
             else:
-                st.caption("勾选候选人 → 保存 → 生成邮件")
+                st.caption("Select candidates → Save → Generate Emails")
     else:
-        st.info("没有符合筛选条件的候选人。试试降低契合度范围。")
+        st.info("No candidates match the current filters. Try lowering the fit score range.")
 
     # ================================================================
-    # STEP 3: 预览邮件
+    # STEP 2: Preview Emails
     # ================================================================
     drafts = [(inf.id, inf.name, inf.platform) for inf in all_inf if inf.email_draft]
     if drafts:
         st.markdown("---")
-        st.subheader(f"Step 2 · 预览邮件 ({len(drafts)})")
+        st.markdown(f'<div class="section-title"><span class="step-badge">STEP 2</span> Preview Emails ({len(drafts)})</div>', unsafe_allow_html=True)
 
         selected_name = st.selectbox(
-            "选择博主",
+            "Select influencer",
             [f"{name} · {plat} (ID:{id})" for id, name, plat in drafts],
             label_visibility="collapsed"
         )
@@ -295,7 +444,7 @@ with get_db() as db:
 
         if selected_inf and selected_inf.email_draft:
             edited_draft = st.text_area(
-                "邮件内容（可编辑）",
+                "Email content (editable)",
                 selected_inf.email_draft,
                 height=250,
                 key=f"draft_{selected_id}",
@@ -304,17 +453,17 @@ with get_db() as db:
 
             btn_col1, btn_col2, btn_col3 = st.columns(3)
             with btn_col1:
-                if st.button("💾 保存修改", key="save_draft"):
+                if st.button("Save Draft", icon="💾", key="save_draft"):
                     selected_inf.email_draft = edited_draft
                     db.commit()
-                    st.toast("邮件已保存！")
+                    st.toast("Draft saved")
             with btn_col2:
-                if st.button("🔄 重新生成", key="regen_draft"):
+                if st.button("Regenerate", icon="🔄", key="regen_draft"):
                     try:
                         writer = WriterAgent()
                         async def _regen_single():
                             await writer.write_draft(
-                                brand_req or "品牌合作",
+                                brand_req or "Brand partnership",
                                 selected_inf,
                                 brand_name=brand_name,
                                 brand_website=brand_website
@@ -323,13 +472,15 @@ with get_db() as db:
                         db.commit()
                         st.rerun()
                     except Exception as e:
-                        st.error(f"重新生成失败: {e}")
+                        st.error(f"Regeneration failed: {e}")
 
     # ================================================================
-    # STEP 4: 导出
+    # STEP 3: Export
     # ================================================================
     st.markdown("---")
-    st.subheader("Step 3 · 导出")
+    st.markdown('<div class="section-title"><span class="step-badge">STEP 3</span> Export</div>', unsafe_allow_html=True)
+    st.markdown("")
+
     export_col1, export_col2 = st.columns(2)
 
     with export_col1:
@@ -348,9 +499,10 @@ with get_db() as db:
             })
         csv = pd.DataFrame(export_data).to_csv(index=False)
         st.download_button(
-            "📊 导出候选人 CSV",
+            "Download Candidates CSV",
             csv, "influencers.csv", "text/csv",
-            width="stretch",
+            icon="📊",
+            use_container_width=True,
         )
 
     with export_col2:
@@ -361,11 +513,12 @@ with get_db() as db:
         ]
         if confirmed_drafts:
             st.download_button(
-                f"✉️ 导出已确认邮件 ({len(confirmed_drafts)})",
+                f"Download Emails ({len(confirmed_drafts)})",
                 "\n".join(confirmed_drafts),
                 "email_drafts.txt", "text/plain",
-                width="stretch",
+                icon="✉️",
+                use_container_width=True,
             )
         else:
-            st.button("✉️ 导出已确认邮件", disabled=True, width="stretch",
-                       help="请先确认候选人并生成邮件")
+            st.button("Download Emails", disabled=True, use_container_width=True,
+                       help="Confirm candidates and generate emails first")
