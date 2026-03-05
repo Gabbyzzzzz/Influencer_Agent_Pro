@@ -31,11 +31,16 @@ st.markdown("""
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
 
+    /* --- Kill Streamlit top padding --- */
+    .stMainBlockContainer {
+        padding-top: 1rem !important;
+    }
+
     /* --- Header area --- */
     .main-header {
-        padding: 1.5rem 0 1rem 0;
+        padding: 0 0 0.75rem 0;
         border-bottom: 1px solid #E2E8F0;
-        margin-bottom: 1.5rem;
+        margin-bottom: 1.25rem;
     }
     .main-header h1 {
         font-size: 1.75rem;
@@ -161,6 +166,11 @@ if _missing:
             '```\nGEMINI_API_KEY = "your_key"\nGOOGLE_API_KEY = "your_key"\nSEARCH_ENGINE_ID = "your_id"\n```')
     st.stop()
 
+# ======================== Session State ========================
+
+if "current_batch_id" not in st.session_state:
+    st.session_state.current_batch_id = None
+
 # ======================== Helpers ========================
 
 def format_followers(count, verified):
@@ -192,10 +202,10 @@ def format_time(dt):
 
 async def _run_search_and_score(brand_req, platforms, brand_name, budget_range):
     scout = ScoutAgent(platforms=platforms)
-    new_count = await scout.run(brand_req, brand_name=brand_name)
+    new_count, batch_id = await scout.run(brand_req, brand_name=brand_name)
     analyst = AnalystAgent()
     await analyst.run(brand_req, budget_range=budget_range)
-    return new_count
+    return new_count, batch_id
 
 # ======================== Sidebar ========================
 
@@ -231,9 +241,11 @@ if st.sidebar.button("Search + Score", type="primary", icon="🔍", use_containe
             st.write("Scout Agent is searching across platforms...")
             st.write("Analyst Agent will score candidates automatically...")
             try:
-                new_count = asyncio.run(
+                new_count, new_batch_id = asyncio.run(
                     _run_search_and_score(brand_req, platforms, brand_name, budget_range)
                 )
+                # Auto-switch view to the new batch
+                st.session_state.current_batch_id = new_batch_id
                 st.write(f"Found {new_count} new candidates — scoring complete.")
             except Exception as e:
                 st.error(f"Search/scoring failed: {e}")
@@ -247,15 +259,19 @@ with st.sidebar.expander("Search History", expanded=False):
         if recent_batches:
             for b in recent_batches:
                 bcol1, bcol2 = st.sidebar.columns([4, 1])
+                is_current = (st.session_state.current_batch_id == b.id)
                 with bcol1:
+                    prefix = "▸ " if is_current else ""
                     st.caption(
-                        f"{format_time(b.created_at)} · {b.platforms} · {b.candidate_count or 0} found"
+                        f"{prefix}{format_time(b.created_at)} · {b.platforms} · {b.candidate_count or 0} found"
                     )
                 with bcol2:
                     if st.button("×", key=f"del_batch_{b.id}", help="Delete this batch"):
                         db.query(Influencer).filter_by(batch_id=b.id).delete()
                         db.query(SearchBatch).filter_by(id=b.id).delete()
                         db.commit()
+                        if st.session_state.current_batch_id == b.id:
+                            st.session_state.current_batch_id = None
                         st.rerun()
         else:
             st.caption("No search history yet")
@@ -271,10 +287,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 with get_db() as db:
-    all_inf = db.query(Influencer).order_by(Influencer.fit_score.desc()).all()
+    # Determine which candidates to show
+    current_batch_id = st.session_state.current_batch_id
+    if current_batch_id:
+        # Show candidates from the current/latest batch
+        batch_inf = db.query(Influencer).filter_by(batch_id=current_batch_id)\
+            .order_by(Influencer.fit_score.desc()).all()
+        all_inf = batch_inf if batch_inf else db.query(Influencer).order_by(Influencer.fit_score.desc()).all()
+    else:
+        all_inf = db.query(Influencer).order_by(Influencer.fit_score.desc()).all()
 
     if not all_inf:
-        st.markdown("")
         st.info("Configure your brand requirements in the sidebar, then click **Search + Score** to get started.")
         st.stop()
 
@@ -311,25 +334,29 @@ with get_db() as db:
     st.markdown("---")
     st.markdown('<div class="section-title"><span class="step-badge">STEP 1</span> Select Candidates</div>', unsafe_allow_html=True)
 
-    # Filters
+    # Filters — batch selector + platform + score range
     view_col, plat_col, score_col = st.columns([1, 1, 1])
 
     with view_col:
         all_batches = db.query(SearchBatch).order_by(SearchBatch.created_at.desc()).all()
         view_options = ["All Candidates"]
         batch_map = {}
-        for b in all_batches[:5]:
+        default_idx = 0
+        for idx, b in enumerate(all_batches[:8]):
             label = f"{format_time(b.created_at)} · {b.platforms} ({b.candidate_count or 0})"
             view_options.append(label)
             batch_map[label] = b.id
-        view_choice = st.selectbox("View", view_options, label_visibility="collapsed")
+            if b.id == current_batch_id:
+                default_idx = idx + 1  # +1 because "All Candidates" is index 0
+        view_choice = st.selectbox("View", view_options, index=default_idx, label_visibility="collapsed")
 
+    # Resolve which candidates to display based on selection
     if view_choice == "All Candidates":
-        display_list = all_inf
+        display_list = db.query(Influencer).order_by(Influencer.fit_score.desc()).all()
     else:
-        batch_id = batch_map.get(view_choice)
-        display_list = db.query(Influencer).filter_by(batch_id=batch_id)\
-            .order_by(Influencer.fit_score.desc()).all() if batch_id else all_inf
+        sel_batch_id = batch_map.get(view_choice)
+        display_list = db.query(Influencer).filter_by(batch_id=sel_batch_id)\
+            .order_by(Influencer.fit_score.desc()).all() if sel_batch_id else all_inf
 
     all_platforms = list(set(i.platform for i in display_list if i.platform))
     with plat_col:
@@ -360,7 +387,7 @@ with get_db() as db:
             "Followers": format_followers(inf.follower_count, inf.followers_verified),
             "Fit Score": inf.fit_score if inf.fit_score else 0,
             "Est. Price": format_price(inf.price_min, inf.price_max),
-            "Reason": (inf.fit_reason or "")[:40],
+            "Reason": (inf.fit_reason or "")[:50],
             "URL": inf.url or "",
         })
 
@@ -394,17 +421,21 @@ with get_db() as db:
                 st.toast(f"Saved {save_count} candidates")
                 st.rerun()
 
-        confirmed_no_draft = [i for i in all_inf if i.is_confirmed and not i.email_draft]
+        # Get all confirmed candidates (across all batches) for email generation
+        all_confirmed_no_draft = db.query(Influencer).filter(
+            Influencer.is_confirmed == True,
+            Influencer.email_draft == None
+        ).all()
 
         with action_col2:
             if st.button(
-                f"Generate Emails ({len(confirmed_no_draft)})",
+                f"Generate Emails ({len(all_confirmed_no_draft)})",
                 icon="✍️",
                 use_container_width=True,
-                disabled=len(confirmed_no_draft) == 0,
-                type="primary" if confirmed_no_draft else "secondary",
+                disabled=len(all_confirmed_no_draft) == 0,
+                type="primary" if all_confirmed_no_draft else "secondary",
             ):
-                with st.spinner(f"Writing emails for {len(confirmed_no_draft)} candidates..."):
+                with st.spinner(f"Writing emails for {len(all_confirmed_no_draft)} candidates..."):
                     try:
                         writer = WriterAgent()
                         asyncio.run(writer.run(
@@ -417,7 +448,7 @@ with get_db() as db:
                         st.error(f"Email generation failed: {e}")
 
         with action_col3:
-            if confirmed_no_draft:
+            if all_confirmed_no_draft:
                 st.caption("Save your selection first, then generate emails")
             elif confirmed_count > 0 and draft_count > 0:
                 st.caption("Emails are ready — scroll down to preview")
@@ -429,7 +460,12 @@ with get_db() as db:
     # ================================================================
     # STEP 2: Preview Emails
     # ================================================================
-    drafts = [(inf.id, inf.name, inf.platform) for inf in all_inf if inf.email_draft]
+    # Show drafts from all confirmed candidates (not just current batch)
+    all_with_drafts = db.query(Influencer).filter(
+        Influencer.email_draft != None
+    ).order_by(Influencer.fit_score.desc()).all()
+    drafts = [(inf.id, inf.name, inf.platform) for inf in all_with_drafts]
+
     if drafts:
         st.markdown("---")
         st.markdown(f'<div class="section-title"><span class="step-badge">STEP 2</span> Preview Emails ({len(drafts)})</div>', unsafe_allow_html=True)
@@ -483,9 +519,12 @@ with get_db() as db:
 
     export_col1, export_col2 = st.columns(2)
 
+    # Export all candidates (across all batches)
+    all_for_export = db.query(Influencer).order_by(Influencer.fit_score.desc()).all()
+
     with export_col1:
         export_data = []
-        for inf in all_inf:
+        for inf in all_for_export:
             export_data.append({
                 "Name": inf.name,
                 "Platform": inf.platform,
@@ -508,7 +547,7 @@ with get_db() as db:
     with export_col2:
         confirmed_drafts = [
             f"To: {inf.name}\nPlatform: {inf.platform}\nURL: {inf.url}\n\n{inf.email_draft}\n\n{'='*50}\n"
-            for inf in all_inf
+            for inf in all_for_export
             if inf.is_confirmed and inf.email_draft
         ]
         if confirmed_drafts:

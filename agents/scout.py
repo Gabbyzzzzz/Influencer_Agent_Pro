@@ -28,10 +28,8 @@ class ScoutAgent:
         self.search_engine_id = os.getenv("SEARCH_ENGINE_ID")
         self.semaphore = asyncio.Semaphore(MAX_CONCURRENT_API)
 
-        # 缓存 search service
         self._search_service = build("customsearch", "v1", developerKey=self.google_api_key)
 
-        # 平台 Provider 注册
         self._all_providers = {
             "YouTube": YouTubeProvider(),
             "Instagram": InstagramProvider(),
@@ -40,33 +38,43 @@ class ScoutAgent:
         platform_names = platforms or ["YouTube"]
         self.providers = {p: self._all_providers[p] for p in platform_names if p in self._all_providers}
 
-    async def generate_queries(self, brand_requirement: str, platform_filter: str) -> List[str]:
+    async def generate_queries(self, brand_requirement: str, platform_filter: str, brand_name: str = "") -> List[str]:
+        brand_context = f"Brand: {brand_name}\n" if brand_name else ""
         prompt = f"""You are an expert influencer search specialist.
 
-Brand requirement: '{brand_requirement}'
+{brand_context}Brand requirement: '{brand_requirement}'
 
-Task: Generate {QUERIES_PER_PLATFORM} diverse Google search queries to find influencer profiles.
+Task: Generate {QUERIES_PER_PLATFORM} diverse Google search queries to find influencer profiles on this platform.
 
 CRITICAL RULES:
 - Every query MUST start with exactly: {platform_filter}
 - Use broad, natural English keywords (NOT exact-match quoted phrases)
-- Do NOT use operators like +, OR, AND
-- Do NOT wrap multiple words in quotes — use bare keywords
-- Each query should target a different angle:
-  1. Product category keywords (e.g., pet memorial, pet urn, pet accessories)
-  2. Creator type keywords (e.g., pet loss support, pet care vlog)
-  3. Audience keywords (e.g., dog mom, cat lover, pet parent)
-  4. Content style keywords (e.g., pet DIY, pet product review, unboxing)
-  5. Niche community keywords (e.g., rainbow bridge, pet grief, pet remembrance)
+- Do NOT use operators like +, OR, AND, or quotes
+- Each query MUST target a DIFFERENT angle to maximize diversity:
 
-GOOD examples:
-  {platform_filter} pet memorial custom urn review
-  {platform_filter} dog lover accessories haul
-  {platform_filter} pet loss support grief vlog
+  1. Core niche keywords — directly describe the product/service category
+  2. Creator type — the kind of influencer (reviewer, vlogger, educator, enthusiast)
+  3. Audience persona — who watches this content (e.g. "dog mom", "new parent", "fitness beginner")
+  4. Content format — the type of videos/posts (haul, unboxing, tutorial, review, day in life)
+  5. Adjacent niche — related but not identical topics that attract the same audience
+  6. Micro-influencer terms — niche community language, hashtag-style terms
+  7. Problem/solution angle — what problem does the brand solve, who talks about it
+
+Make queries SPECIFIC and LONG (4-7 keywords each). Avoid generic terms like "best" or "top".
+Vary the vocabulary across queries — do NOT repeat the same keywords.
+
+GOOD examples for a pet memorial brand:
+  {platform_filter} pet memorial custom urn creator review
+  {platform_filter} dog mom grief loss support vlog
+  {platform_filter} pet remembrance keepsake unboxing haul
+  {platform_filter} rainbow bridge pet tribute heartfelt
+  {platform_filter} pet lover accessories gift guide
+  {platform_filter} veterinarian pet loss coping advice
+  {platform_filter} animal rescue advocate tribute content
 
 BAD examples (DO NOT do this):
   "pet memorial" "custom urn" review OR unboxing
-  site:youtube.com/@ + "pet accessories"
+  {platform_filter} best pet channels
 
 Output format: One query per line, no numbering, no extra text."""
 
@@ -77,16 +85,15 @@ Output format: One query per line, no numbering, no extra text."""
         )
         raw_queries = [q.strip() for q in response.text.strip().split('\n') if q.strip()]
 
-        # 验证并修复：确保每条查询都包含正确的 site: 过滤
         validated = []
         for q in raw_queries:
             if platform_filter not in q:
                 q = f"{platform_filter} {q}"
-                logger.warning(f"修复缺失 site filter: {q}")
+                logger.warning(f"Fixed missing site filter: {q}")
             validated.append(q)
 
         queries = validated[:QUERIES_PER_PLATFORM]
-        logger.info(f"生成 {len(queries)} 条搜索指令 ({platform_filter}): {queries}")
+        logger.info(f"Generated {len(queries)} queries ({platform_filter}): {queries}")
         return queries
 
     async def execute_search(self, query: str) -> List[dict]:
@@ -98,14 +105,14 @@ Output format: One query per line, no numbering, no extra text."""
                     ).execute
                 )
                 items = res.get('items', [])
-                logger.info(f"搜索返回 {len(items)} 条: {query[:60]}...")
+                logger.info(f"Search returned {len(items)} results: {query[:60]}...")
                 return items
             except Exception as e:
-                logger.error(f"搜索失败 ({query[:40]}...): {e}")
+                logger.error(f"Search failed ({query[:40]}...): {e}")
                 return []
 
     async def _fetch_single_stats(self, url: str, title: str, snippet: str):
-        """获取单个 URL 的统计数据"""
+        """Fetch stats for a single URL."""
         platform = "Unknown"
         handle = ""
         real_subs = 0
@@ -122,11 +129,10 @@ Output format: One query per line, no numbering, no extra text."""
                         real_subs, fetched_name, engagement_rate = await provider.get_stats(url)
                     if fetched_name:
                         real_name = fetched_name
-                    # 粉丝数 > 0 说明 API 成功返回了真实数据
                     if real_subs > 0:
                         verified = True
                 except Exception as e:
-                    logger.warning(f"获取统计失败 ({url}): {e}")
+                    logger.warning(f"Stats fetch failed ({url}): {e}")
                 break
 
         return {
@@ -141,10 +147,12 @@ Output format: One query per line, no numbering, no extra text."""
         }
 
     async def save_to_discovery(self, all_raw_results: List[dict], batch_id: int = None) -> int:
-        # 第一步：过滤和去重
+        # Step 1: Filter and dedup
         seen_urls = set()
         valid_items = []
 
+        # Only dedup within this batch — allow re-discovery across batches
+        # But still check DB to avoid exact duplicates (unique constraint)
         with get_db() as db:
             existing_urls = {row.url for row in db.query(Influencer.url).all()}
 
@@ -161,12 +169,12 @@ Output format: One query per line, no numbering, no extra text."""
             valid_items.append(item)
 
         if not valid_items:
-            logger.info("没有新的候选 URL")
+            logger.info("No new candidate URLs found")
             return 0
 
-        logger.info(f"过滤后 {len(valid_items)} 个新 URL，开始并行获取统计...")
+        logger.info(f"After filtering: {len(valid_items)} new URLs, fetching stats...")
 
-        # 第二步：并行获取所有统计数据
+        # Step 2: Parallel stats fetch
         stats_tasks = [
             self._fetch_single_stats(
                 item['link'],
@@ -177,19 +185,20 @@ Output format: One query per line, no numbering, no extra text."""
         ]
         results = await asyncio.gather(*stats_tasks, return_exceptions=True)
 
-        # 第三步：批量写入数据库
+        # Step 3: Batch insert to DB
         new_count = 0
         with get_db() as db:
             for result in results:
                 if isinstance(result, Exception):
-                    logger.error(f"统计获取异常: {result}")
+                    logger.error(f"Stats fetch exception: {result}")
+                    continue
+                if result.get("platform") == "Unknown":
                     continue
                 if batch_id:
                     result["batch_id"] = batch_id
                 db.add(Influencer(**result))
                 new_count += 1
-                logger.info(f"新增: {result['name']} ({result['platform']}, {result['follower_count']:,})")
-            # 更新批次的候选人数
+                logger.info(f"Added: {result['name']} ({result['platform']}, {result['follower_count']:,})")
             if batch_id:
                 batch = db.query(SearchBatch).filter_by(id=batch_id).first()
                 if batch:
@@ -198,10 +207,10 @@ Output format: One query per line, no numbering, no extra text."""
 
         return new_count
 
-    async def run(self, brand_requirement: str, brand_name: str = "", batch_id: int = None) -> int:
-        logger.info(f"Scout 启动，平台: {list(self.providers.keys())}")
+    async def run(self, brand_requirement: str, brand_name: str = "", batch_id: int = None) -> tuple:
+        """Returns (new_count, batch_id) so the UI can auto-focus on the new batch."""
+        logger.info(f"Scout starting, platforms: {list(self.providers.keys())}")
 
-        # 如果没有传入 batch_id，创建新批次
         if not batch_id:
             with get_db() as db:
                 batch = SearchBatch(
@@ -212,25 +221,24 @@ Output format: One query per line, no numbering, no extra text."""
                 db.add(batch)
                 db.commit()
                 batch_id = batch.id
-                logger.info(f"创建搜索批次 #{batch_id}")
+                logger.info(f"Created search batch #{batch_id}")
 
-        # 所有平台并行生成搜索指令
+        # Generate queries for all platforms in parallel
         query_tasks = [
-            self.generate_queries(brand_requirement, provider.search_site_filter)
+            self.generate_queries(brand_requirement, provider.search_site_filter, brand_name)
             for provider in self.providers.values()
         ]
         all_query_lists = await asyncio.gather(*query_tasks)
 
-        # 所有搜索指令并行执行
+        # Execute all search queries in parallel
         all_queries = [q for query_list in all_query_lists for q in query_list]
-        logger.info(f"共 {len(all_queries)} 条搜索指令，开始并行搜索...")
+        logger.info(f"Total {len(all_queries)} queries, searching in parallel...")
         search_tasks = [self.execute_search(q) for q in all_queries]
         results_lists = await asyncio.gather(*search_tasks)
 
         all_items = [item for result_list in results_lists for item in result_list]
-        logger.info(f"搜索阶段完成，共 {len(all_items)} 条原始结果")
+        logger.info(f"Search phase complete, {len(all_items)} raw results")
 
-        # 并行获取统计 + 保存
         new_count = await self.save_to_discovery(all_items, batch_id=batch_id)
-        logger.info(f"Scout 完成！新增 {new_count} 位候选人。")
-        return new_count
+        logger.info(f"Scout complete! Added {new_count} candidates.")
+        return new_count, batch_id

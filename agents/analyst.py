@@ -24,8 +24,8 @@ class AnalystAgent:
         self.semaphore = asyncio.Semaphore(MAX_CONCURRENT_API)
 
     def _parse_json_response(self, text: str) -> list:
-        """多层降级 JSON 解析：直接解析 → 代码块提取 → 正则提取"""
-        # 尝试1: 直接解析
+        """Multi-layer fallback JSON parsing."""
+        # Attempt 1: Direct parse
         try:
             result = json.loads(text)
             if isinstance(result, list):
@@ -33,7 +33,7 @@ class AnalystAgent:
         except json.JSONDecodeError:
             pass
 
-        # 尝试2: 提取 markdown 代码块中的 JSON
+        # Attempt 2: Extract from markdown code block
         m = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text)
         if m:
             try:
@@ -43,7 +43,7 @@ class AnalystAgent:
             except json.JSONDecodeError:
                 pass
 
-        # 尝试3: 非贪婪正则匹配第一个 JSON 数组
+        # Attempt 3: Regex match first JSON array
         m = re.search(r'\[[\s\S]*?\](?=\s*$|\s*[^,\]\}])', text)
         if m:
             try:
@@ -53,11 +53,11 @@ class AnalystAgent:
             except json.JSONDecodeError:
                 pass
 
-        logger.warning(f"JSON 解析全部失败，原始响应: {text[:300]}...")
+        logger.warning(f"All JSON parse attempts failed, raw response: {text[:300]}...")
         return []
 
     def _validate_score(self, res: dict) -> dict:
-        """校验并修正 AI 输出的评分数据"""
+        """Validate and correct AI scoring output."""
         score = res.get('fit_score')
         if score is not None:
             score = max(1, min(100, int(score)))
@@ -83,49 +83,60 @@ class AnalystAgent:
         inf_list_text = ""
         for i, inf in enumerate(influencers):
             snippet = (inf.tags or '')[:300]
-            verified_tag = "✓已验证" if inf.followers_verified else "未验证"
+            verified_tag = "verified" if inf.followers_verified else "unverified"
             inf_list_text += (
-                f"ID: {i} | 名称: {inf.name} | 平台: {inf.platform} | "
-                f"粉丝数: {inf.follower_count:,} ({verified_tag}) | 简介: {snippet}\n"
+                f"ID: {i} | Name: {inf.name} | Platform: {inf.platform} | "
+                f"Followers: {inf.follower_count:,} ({verified_tag}) | Bio: {snippet}\n"
             )
 
         budget_hint = ""
         if budget_range:
-            budget_hint = f"\n品牌预算范围: ${budget_range[0]:,} - ${budget_range[1]:,} USD\n"
+            budget_hint = f"""
+Brand budget range: ${budget_range[0]:,} - ${budget_range[1]:,} USD per collaboration.
+IMPORTANT: Use budget to inform scoring:
+- Influencers whose estimated price fits within budget should get a BONUS (+5-10 points)
+- Influencers way above budget (>3x) should be penalized (-10-15 points) in fit_score
+- Still include all influencers but clearly note budget fit in the reason
+"""
 
-        prompt = f"""你是一个资深的海外营销专家。品牌需求：'{brand_requirement}'
+        prompt = f"""You are a senior influencer marketing strategist. Evaluate these candidates.
+
+Brand requirement: '{brand_requirement}'
 {budget_hint}
-待评估博主列表：
+Candidates:
 {inf_list_text}
 
-任务：
-1. Fit Score: 1-100 评分（考虑粉丝量、内容垂直度与需求的匹配度）。
-2. Price Range: 按以下分级标准预测单条合作价格(USD)：
+Tasks:
+1. **Fit Score (1-100)**: Rate brand fit considering:
+   - Content relevance to the brand requirement (most important, 40% weight)
+   - Follower count and audience size (20% weight)
+   - Platform suitability for the brand (20% weight)
+   - Budget fit if budget is specified (20% weight)
+   - Be STRICT: generic/irrelevant creators should score below 30
+   - Only truly relevant niche creators should score above 70
 
-   **定价分级表（按粉丝量级）：**
-   - Nano（<10K 粉丝）: $50-$200（固定底价区间）
-   - Micro（10K-100K）: 粉丝数 × $0.02-$0.05
-   - Mid（100K-500K）: 粉丝数 × $0.05-$0.08
-   - Macro（500K+）: 粉丝数 × $0.08-$0.12
+2. **Price Range (USD)**: Estimate per-collaboration cost:
+   Pricing tiers by follower count:
+   - Nano (<10K): $50-$200 (fixed)
+   - Micro (10K-100K): followers × $0.02-$0.05
+   - Mid (100K-500K): followers × $0.05-$0.08
+   - Macro (500K+): followers × $0.08-$0.12
 
-   **平台系数：**
-   - YouTube 长视频: ×1.0（基准）
-   - Instagram 帖子/Reel: ×0.6
-   - TikTok 短视频: ×0.4（但高互动率可 ×0.6-0.8）
+   Platform multipliers:
+   - YouTube: ×1.0 (baseline)
+   - Instagram: ×0.6
+   - TikTok: ×0.4 (high engagement: ×0.6-0.8)
 
-   **溢价因素：** 垂类博主 +20-50%，高互动率 +10-30%
-   **重要：** 如果粉丝数为 0 且标注"未验证"，设 price_min=0, price_max=0（表示需确认粉丝数后估价）
+   Premiums: niche specialist +20-50%, high engagement +10-30%
+   If followers = 0 and unverified: set price_min=0, price_max=0
 
-3. Fit Reason: 简短说明推荐/不推荐的理由（中文，50字以内）。
+3. **Fit Reason**: Brief explanation (English, under 60 chars) of why this creator fits or doesn't.
 
-示例输出格式：
+Output format (strict JSON array, no extra text):
 [
-  {{"id": 0, "fit_score": 85, "fit_reason": "该频道专注户外装备评测，与品牌高度契合", "price_min": 500, "price_max": 1200}},
-  {{"id": 1, "fit_score": 30, "fit_reason": "内容主题与品牌关联度较低", "price_min": 50, "price_max": 100}},
-  {{"id": 2, "fit_score": 70, "fit_reason": "宠物领域博主但粉丝数未验证", "price_min": 0, "price_max": 0}}
-]
-
-请严格以 JSON 数组输出，不要有额外文字。"""
+  {{"id": 0, "fit_score": 85, "fit_reason": "Pet memorial niche, strong audience alignment", "price_min": 500, "price_max": 1200}},
+  {{"id": 1, "fit_score": 25, "fit_reason": "Gaming content, no brand relevance", "price_min": 50, "price_max": 100}}
+]"""
 
         async with self.semaphore:
             try:
@@ -137,7 +148,7 @@ class AnalystAgent:
 
                 results = self._parse_json_response(response.text)
                 if not results:
-                    logger.error(f"批次解析失败，{len(influencers)} 位候选人未评分")
+                    logger.error(f"Batch parse failed, {len(influencers)} candidates unscored")
                     return False
 
                 updated = 0
@@ -152,32 +163,31 @@ class AnalystAgent:
                         target.price_max = res.get('price_max')
                         updated += 1
 
-                logger.info(f"批次评分完成: {updated}/{len(influencers)} 更新成功")
+                logger.info(f"Batch scoring complete: {updated}/{len(influencers)} updated")
                 return True
 
             except Exception as e:
-                logger.error(f"Analyst 批量评估失败: {e}")
+                logger.error(f"Analyst batch evaluation failed: {e}")
                 return False
 
     async def run(self, brand_requirement: str, budget_range: tuple = None):
         with get_db() as db:
             pending_list = db.query(Influencer).filter(Influencer.fit_score == None).all()
             if not pending_list:
-                logger.info("没有待评分的候选人")
+                logger.info("No candidates pending scoring")
                 return
 
-            logger.info(f"开始评分: {len(pending_list)} 位候选人")
+            logger.info(f"Scoring {len(pending_list)} candidates")
 
             batches = [pending_list[i:i + BATCH_SIZE] for i in range(0, len(pending_list), BATCH_SIZE)]
             tasks = [self.analyze_batch(brand_requirement, batch, budget_range) for batch in batches]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # 记录失败的 batch
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
-                    logger.error(f"Batch {i} 异常: {result}")
+                    logger.error(f"Batch {i} exception: {result}")
                 elif not result:
-                    logger.warning(f"Batch {i} 评分失败")
+                    logger.warning(f"Batch {i} scoring failed")
 
             db.commit()
-            logger.info("Analyst 评分全部完成")
+            logger.info("Analyst scoring complete")
