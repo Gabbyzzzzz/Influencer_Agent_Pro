@@ -1,4 +1,4 @@
-# Influencer Agent Pro
+# InfluencerScout
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/UI-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
@@ -12,7 +12,7 @@ An AI-powered multi-agent system that helps brands discover, evaluate, and reach
 
 ## What It Does
 
-Influencer Agent Pro automates the influencer partnership workflow end-to-end:
+InfluencerScout automates the influencer partnership workflow end-to-end:
 
 1. **Discover** — AI-generated search queries find relevant creators across multiple platforms
 2. **Evaluate** — Each candidate is scored on brand fit (1-100) with a price estimate and reasoning
@@ -63,8 +63,8 @@ All agents run with async concurrency control (`asyncio.Semaphore`) for efficien
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/Gabbyzzzzz/Influencer_Agent_Pro.git
-cd Influencer_Agent_Pro
+git clone https://github.com/Gabbyzzzzz/InfluencerScout.git
+cd InfluencerScout
 pip install -r requirements.txt
 ```
 
@@ -109,7 +109,7 @@ streamlit run app.py
 ## Project Structure
 
 ```
-Influencer_Agent_Pro/
+InfluencerScout/
 ├── app.py                    # Streamlit UI and workflow orchestration
 ├── config.py                 # Centralized configuration
 ├── database.py               # SQLAlchemy models (Influencer, SearchBatch)

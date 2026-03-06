@@ -14,7 +14,7 @@ from agents.analyst import AnalystAgent
 from agents.writer import WriterAgent
 
 st.set_page_config(
-    page_title="Influencer Agent Pro",
+    page_title="InfluencerScout",
     layout="wide",
     page_icon="✦",
     initial_sidebar_state="expanded",
@@ -209,7 +209,7 @@ async def _run_search_and_score(brand_req, platforms, brand_name, budget_range):
 
 # ======================== Sidebar ========================
 
-st.sidebar.markdown("#### ✦ Influencer Agent Pro")
+st.sidebar.markdown("#### ✦ InfluencerScout")
 st.sidebar.caption("AI-powered influencer discovery & outreach")
 st.sidebar.markdown("---")
 
@@ -281,7 +281,7 @@ with st.sidebar.expander("Search History", expanded=False):
 # Header
 st.markdown("""
 <div class="main-header">
-    <h1>Influencer Agent Pro</h1>
+    <h1>InfluencerScout</h1>
     <p>Discover, evaluate, and reach out to influencers — powered by AI agents</p>
 </div>
 """, unsafe_allow_html=True)

@@ -1,4 +1,4 @@
-# Influencer Agent Pro — 系统架构与技术栈
+# InfluencerScout — 系统架构与技术栈
 
 ## 目录
 
@@ -21,7 +21,7 @@
 
 ## 1. 项目概述
 
-Influencer Agent Pro 是一个 **AI 驱动的多 Agent 网红营销自动化系统**，覆盖网红发现、品牌契合度评分、合作定价估算、个性化邮件生成的全流程。
+InfluencerScout 是一个 **AI 驱动的多 Agent 网红营销自动化系统**，覆盖网红发现、品牌契合度评分、合作定价估算、个性化邮件生成的全流程。
 
 **核心能力**：
 - 跨平台（YouTube / Instagram / TikTok）网红批量发现
@@ -137,7 +137,7 @@ pandas>=2.0.0
 ## 4. 目录结构
 
 ```
-Influencer_Agent_Pro/
+InfluencerScout/
 ├── app.py                      # 主应用入口 (Streamlit UI + 流程编排)
 ├── config.py                   # 集中配置 (API Keys, 参数常量)
 ├── database.py                 # 数据库模型 (SQLAlchemy ORM)
@@ -162,7 +162,7 @@ Influencer_Agent_Pro/
 │   └── agent.log               # 应用日志
 │
 ├── docs/                       # 文档
-│   └── PRD_Influencer_Agent_Pro.md
+│   └── PRD_InfluencerScout.md
 │
 ├── .streamlit/
 │   └── config.toml             # Streamlit 主题 & 服务器配置
@@ -443,4 +443,4 @@ textColor = "#262730"
 
 > 文档版本: 2.0
 > 最后更新: 2026-03-03
-> 代码仓库: https://github.com/Gabbyzzzzz/Influencer_Agent_Pro
+> 代码仓库: https://github.com/Gabbyzzzzz/InfluencerScout
