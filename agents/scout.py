@@ -21,14 +21,21 @@ def _get_client():
         _gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
     return _gemini_client
 
+# Cache search service globally — build() is expensive and leaks memory if called repeatedly
+_search_service = None
+def _get_search_service():
+    global _search_service
+    if _search_service is None:
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if api_key:
+            _search_service = build("customsearch", "v1", developerKey=api_key)
+    return _search_service
+
 
 class ScoutAgent:
     def __init__(self, platforms: List[str] = None):
-        self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.search_engine_id = os.getenv("SEARCH_ENGINE_ID")
         self.semaphore = asyncio.Semaphore(MAX_CONCURRENT_API)
-
-        self._search_service = build("customsearch", "v1", developerKey=self.google_api_key)
 
         self._all_providers = {
             "YouTube": YouTubeProvider(),
@@ -44,35 +51,30 @@ class ScoutAgent:
 
 {brand_context}Brand requirement: '{brand_requirement}'
 
-Task: Generate {QUERIES_PER_PLATFORM} diverse Google search queries to find influencer profiles on this platform.
+Task: Generate {QUERIES_PER_PLATFORM} Google search queries to find influencer profiles.
 
 CRITICAL RULES:
 - Every query MUST start with exactly: {platform_filter}
-- Use broad, natural English keywords (NOT exact-match quoted phrases)
-- Do NOT use operators like +, OR, AND, or quotes
-- Each query MUST target a DIFFERENT angle to maximize diversity:
+- Keep queries SHORT: only 2-4 keywords after the site filter
+- Use broad, natural English keywords — NO quotes, NO operators (+, OR, AND)
+- Each query should target a DIFFERENT angle:
 
-  1. Core niche keywords — directly describe the product/service category
-  2. Creator type — the kind of influencer (reviewer, vlogger, educator, enthusiast)
-  3. Audience persona — who watches this content (e.g. "dog mom", "new parent", "fitness beginner")
-  4. Content format — the type of videos/posts (haul, unboxing, tutorial, review, day in life)
-  5. Adjacent niche or problem/solution — related topics or problems the brand solves
+  1. Core product/niche keywords
+  2. Creator type (reviewer, vlogger, educator)
+  3. Audience identity (e.g. dog mom, gym newbie)
+  4. Content style (haul, unboxing, tutorial)
+  5. Related/adjacent topic
 
-Make queries SPECIFIC and LONG (4-7 keywords each). Avoid generic terms like "best" or "top".
-Vary the vocabulary across queries — do NOT repeat the same keywords.
+GOOD examples (SHORT, broad):
+  {platform_filter} pet memorial urn
+  {platform_filter} dog lover vlog
+  {platform_filter} pet loss support
+  {platform_filter} pet accessories haul
+  {platform_filter} rainbow bridge tribute
 
-GOOD examples for a pet memorial brand:
-  {platform_filter} pet memorial custom urn creator review
-  {platform_filter} dog mom grief loss support vlog
-  {platform_filter} pet remembrance keepsake unboxing haul
-  {platform_filter} rainbow bridge pet tribute heartfelt
-  {platform_filter} pet lover accessories gift guide
-  {platform_filter} veterinarian pet loss coping advice
-  {platform_filter} animal rescue advocate tribute content
-
-BAD examples (DO NOT do this):
-  "pet memorial" "custom urn" review OR unboxing
-  {platform_filter} best pet channels
+BAD examples (too long, too specific — Google returns 0 results):
+  {platform_filter} plant based protein powder review newbie gym
+  {platform_filter} eco friendly sustainable baby products unboxing haul vlog
 
 Output format: One query per line, no numbering, no extra text."""
 
@@ -87,7 +89,6 @@ Output format: One query per line, no numbering, no extra text."""
         for q in raw_queries:
             if platform_filter not in q:
                 q = f"{platform_filter} {q}"
-                logger.warning(f"Fixed missing site filter: {q}")
             validated.append(q)
 
         queries = validated[:QUERIES_PER_PLATFORM]
@@ -97,8 +98,12 @@ Output format: One query per line, no numbering, no extra text."""
     async def execute_search(self, query: str) -> List[dict]:
         async with self.semaphore:
             try:
+                service = _get_search_service()
+                if not service:
+                    logger.error("Search service not available")
+                    return []
                 res = await asyncio.to_thread(
-                    self._search_service.cse().list(
+                    service.cse().list(
                         q=query, cx=self.search_engine_id, num=SEARCH_RESULTS_PER_QUERY
                     ).execute
                 )
@@ -145,12 +150,9 @@ Output format: One query per line, no numbering, no extra text."""
         }
 
     async def save_to_discovery(self, all_raw_results: List[dict], batch_id: int = None) -> int:
-        # Step 1: Filter and dedup
         seen_urls = set()
         valid_items = []
 
-        # Only dedup within this batch — allow re-discovery across batches
-        # But still check DB to avoid exact duplicates (unique constraint)
         with get_db() as db:
             existing_urls = {row.url for row in db.query(Influencer.url).all()}
 
@@ -172,24 +174,22 @@ Output format: One query per line, no numbering, no extra text."""
 
         logger.info(f"After filtering: {len(valid_items)} new URLs, fetching stats...")
 
-        # Step 2: Parallel stats fetch
-        stats_tasks = [
-            self._fetch_single_stats(
-                item['link'],
-                item.get('title', ''),
-                item.get('snippet', '')
-            )
-            for item in valid_items
-        ]
-        results = await asyncio.gather(*stats_tasks, return_exceptions=True)
+        # Fetch stats sequentially to avoid SSL/memory issues on Cloud
+        results = []
+        for item in valid_items:
+            try:
+                result = await self._fetch_single_stats(
+                    item['link'],
+                    item.get('title', ''),
+                    item.get('snippet', '')
+                )
+                results.append(result)
+            except Exception as e:
+                logger.error(f"Stats fetch exception: {e}")
 
-        # Step 3: Batch insert to DB
         new_count = 0
         with get_db() as db:
             for result in results:
-                if isinstance(result, Exception):
-                    logger.error(f"Stats fetch exception: {result}")
-                    continue
                 if result.get("platform") == "Unknown":
                     continue
                 if batch_id:
@@ -221,20 +221,20 @@ Output format: One query per line, no numbering, no extra text."""
                 batch_id = batch.id
                 logger.info(f"Created search batch #{batch_id}")
 
-        # Generate queries for all platforms in parallel
-        query_tasks = [
-            self.generate_queries(brand_requirement, provider.search_site_filter, brand_name)
-            for provider in self.providers.values()
-        ]
-        all_query_lists = await asyncio.gather(*query_tasks)
+        # Generate queries (one platform at a time to reduce memory)
+        all_queries = []
+        for provider in self.providers.values():
+            queries = await self.generate_queries(brand_requirement, provider.search_site_filter, brand_name)
+            all_queries.extend(queries)
 
-        # Execute all search queries in parallel
-        all_queries = [q for query_list in all_query_lists for q in query_list]
-        logger.info(f"Total {len(all_queries)} queries, searching in parallel...")
-        search_tasks = [self.execute_search(q) for q in all_queries]
-        results_lists = await asyncio.gather(*search_tasks)
+        logger.info(f"Total {len(all_queries)} queries, searching sequentially...")
 
-        all_items = [item for result_list in results_lists for item in result_list]
+        # Execute searches sequentially to avoid SSL crashes on Cloud
+        all_items = []
+        for query in all_queries:
+            items = await self.execute_search(query)
+            all_items.extend(items)
+
         logger.info(f"Search phase complete, {len(all_items)} raw results")
 
         new_count = await self.save_to_discovery(all_items, batch_id=batch_id)
