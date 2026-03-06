@@ -403,7 +403,7 @@ with get_db() as db:
             },
             disabled=["ID", "Name", "Platform", "Followers", "Fit Score", "Est. Price", "Reason"],
             hide_index=True,
-            width="stretch",
+            use_container_width=True,
             key="main_table"
         )
 
