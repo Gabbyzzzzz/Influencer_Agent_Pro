@@ -1,4 +1,4 @@
-streamlit>=1.40.0
+streamlit>=1.41.0,<1.43.0
 google-genai>=1.0.0
 google-api-python-client>=2.100.0
 sqlalchemy>=2.0.0

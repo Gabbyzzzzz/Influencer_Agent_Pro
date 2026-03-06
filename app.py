@@ -231,7 +231,7 @@ with st.sidebar.expander("Advanced Settings"):
 st.sidebar.markdown("---")
 
 # Launch search
-if st.sidebar.button("🔍 Search + Score", type="primary", width="stretch"):
+if st.sidebar.button("🔍 Search + Score", type="primary", use_container_width=True):
     if not brand_req:
         st.sidebar.error("Please enter brand requirements first.")
     elif not platforms:
@@ -410,7 +410,7 @@ with get_db() as db:
         # Action buttons
         action_col1, action_col2, action_col3 = st.columns([1, 1, 2])
         with action_col1:
-            if st.button("💾 Save Selection", width="stretch"):
+            if st.button("💾 Save Selection", use_container_width=True):
                 save_count = 0
                 for _, row in edited_df.iterrows():
                     target = db.query(Influencer).filter_by(id=row['ID']).first()
@@ -430,7 +430,7 @@ with get_db() as db:
         with action_col2:
             if st.button(
                 f"✍️ Generate Emails ({len(all_confirmed_no_draft)})",
-                width="stretch",
+                use_container_width=True,
                 disabled=len(all_confirmed_no_draft) == 0,
                 type="primary" if all_confirmed_no_draft else "secondary",
             ):
@@ -539,7 +539,7 @@ with get_db() as db:
         st.download_button(
             "📊 Download Candidates CSV",
             csv, "influencers.csv", "text/csv",
-            width="stretch",
+            use_container_width=True,
         )
 
     with export_col2:
@@ -553,8 +553,8 @@ with get_db() as db:
                 f"✉️ Download Emails ({len(confirmed_drafts)})",
                 "\n".join(confirmed_drafts),
                 "email_drafts.txt", "text/plain",
-                width="stretch",
+                use_container_width=True,
             )
         else:
-            st.button("Download Emails", disabled=True, width="stretch",
+            st.button("Download Emails", disabled=True, use_container_width=True,
                        help="Confirm candidates and generate emails first")
