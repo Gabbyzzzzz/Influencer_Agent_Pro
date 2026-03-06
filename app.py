@@ -231,7 +231,7 @@ with st.sidebar.expander("Advanced Settings"):
 st.sidebar.markdown("---")
 
 # Launch search
-if st.sidebar.button("Search + Score", type="primary", icon="🔍", use_container_width=True):
+if st.sidebar.button("🔍 Search + Score", type="primary", use_container_width=True):
     if not brand_req:
         st.sidebar.error("Please enter brand requirements first.")
     elif not platforms:
@@ -410,7 +410,7 @@ with get_db() as db:
         # Action buttons
         action_col1, action_col2, action_col3 = st.columns([1, 1, 2])
         with action_col1:
-            if st.button("Save Selection", icon="💾", use_container_width=True):
+            if st.button("💾 Save Selection", use_container_width=True):
                 save_count = 0
                 for _, row in edited_df.iterrows():
                     target = db.query(Influencer).filter_by(id=row['ID']).first()
@@ -429,8 +429,7 @@ with get_db() as db:
 
         with action_col2:
             if st.button(
-                f"Generate Emails ({len(all_confirmed_no_draft)})",
-                icon="✍️",
+                f"✍️ Generate Emails ({len(all_confirmed_no_draft)})",
                 use_container_width=True,
                 disabled=len(all_confirmed_no_draft) == 0,
                 type="primary" if all_confirmed_no_draft else "secondary",
@@ -489,12 +488,12 @@ with get_db() as db:
 
             btn_col1, btn_col2, btn_col3 = st.columns(3)
             with btn_col1:
-                if st.button("Save Draft", icon="💾", key="save_draft"):
+                if st.button("💾 Save Draft", key="save_draft"):
                     selected_inf.email_draft = edited_draft
                     db.commit()
                     st.toast("Draft saved")
             with btn_col2:
-                if st.button("Regenerate", icon="🔄", key="regen_draft"):
+                if st.button("🔄 Regenerate", key="regen_draft"):
                     try:
                         writer = WriterAgent()
                         async def _regen_single():
@@ -538,9 +537,8 @@ with get_db() as db:
             })
         csv = pd.DataFrame(export_data).to_csv(index=False)
         st.download_button(
-            "Download Candidates CSV",
+            "📊 Download Candidates CSV",
             csv, "influencers.csv", "text/csv",
-            icon="📊",
             use_container_width=True,
         )
 
@@ -552,10 +550,9 @@ with get_db() as db:
         ]
         if confirmed_drafts:
             st.download_button(
-                f"Download Emails ({len(confirmed_drafts)})",
+                f"✉️ Download Emails ({len(confirmed_drafts)})",
                 "\n".join(confirmed_drafts),
                 "email_drafts.txt", "text/plain",
-                icon="✉️",
                 use_container_width=True,
             )
         else:
