@@ -56,9 +56,7 @@ CRITICAL RULES:
   2. Creator type — the kind of influencer (reviewer, vlogger, educator, enthusiast)
   3. Audience persona — who watches this content (e.g. "dog mom", "new parent", "fitness beginner")
   4. Content format — the type of videos/posts (haul, unboxing, tutorial, review, day in life)
-  5. Adjacent niche — related but not identical topics that attract the same audience
-  6. Micro-influencer terms — niche community language, hashtag-style terms
-  7. Problem/solution angle — what problem does the brand solve, who talks about it
+  5. Adjacent niche or problem/solution — related topics or problems the brand solves
 
 Make queries SPECIFIC and LONG (4-7 keywords each). Avoid generic terms like "best" or "top".
 Vary the vocabulary across queries — do NOT repeat the same keywords.

@@ -21,9 +21,9 @@ TOP_PICK_THRESHOLD = 80
 EMAIL_WORD_LIMIT = 120
 
 # API concurrency
-MAX_CONCURRENT_API = 5
+MAX_CONCURRENT_API = 3          # reduced for Streamlit Cloud memory limits
 SEARCH_RESULTS_PER_QUERY = 10
-QUERIES_PER_PLATFORM = 7       # increased from 5 for better coverage
+QUERIES_PER_PLATFORM = 5        # balanced for coverage vs memory
 MAX_RETRIES = 3
 
 # Supported platforms
