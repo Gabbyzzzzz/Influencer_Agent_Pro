@@ -12,7 +12,7 @@
 | **Date** | 2026-02-24 |
 | **Status** | Live (Deployed on Streamlit Cloud) |
 | **Live URL** | https://gabbyzzzzz-influencer-agent-pro-app-f5eohp.streamlit.app/ |
-| **Repository** | https://github.com/Gabbyzzzzz/InfluencerScout |
+| **Repository** | https://github.com/Gabbyzzzzz/Influencer_Agent_Pro |
 
 ---
 

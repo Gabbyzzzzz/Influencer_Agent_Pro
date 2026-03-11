@@ -63,7 +63,7 @@ All agents run with async concurrency control (`asyncio.Semaphore`) for efficien
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/Gabbyzzzzz/InfluencerScout.git
+git clone https://github.com/Gabbyzzzzz/Influencer_Agent_Pro.git
 cd InfluencerScout
 pip install -r requirements.txt
 ```

@@ -44,5 +44,10 @@ GLOBAL_URL_BLACKLIST = [
     '/watch?', '/live/', '/community', '/membership',
 ]
 
+# Rate limiting (demo protection)
+MAX_SEARCHES_PER_SESSION = 3    # max searches per user session
+SEARCH_COOLDOWN_SECONDS = 60    # min interval between searches
+MAX_EMAIL_GENERATES_PER_SESSION = 5  # max email generate/regenerate per session
+
 # UI defaults
 DEFAULT_MIN_SCORE = 40

@@ -443,4 +443,4 @@ textColor = "#262730"
 
 > 文档版本: 2.0
 > 最后更新: 2026-03-03
-> 代码仓库: https://github.com/Gabbyzzzzz/InfluencerScout
+> 代码仓库: https://github.com/Gabbyzzzzz/Influencer_Agent_Pro

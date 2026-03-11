@@ -3,7 +3,9 @@ import streamlit as st
 # config must be imported before agents (injects Streamlit secrets into env vars)
 from config import (
     SUPPORTED_PLATFORMS, DEFAULT_PLATFORMS,
-    FIT_SCORE_THRESHOLD, TOP_PICK_THRESHOLD, DEFAULT_MIN_SCORE
+    FIT_SCORE_THRESHOLD, TOP_PICK_THRESHOLD, DEFAULT_MIN_SCORE,
+    MAX_SEARCHES_PER_SESSION, SEARCH_COOLDOWN_SECONDS,
+    MAX_EMAIL_GENERATES_PER_SESSION,
 )
 import asyncio
 import pandas as pd
@@ -170,6 +172,12 @@ if _missing:
 
 if "current_batch_id" not in st.session_state:
     st.session_state.current_batch_id = None
+if "search_count" not in st.session_state:
+    st.session_state.search_count = 0
+if "last_search_time" not in st.session_state:
+    st.session_state.last_search_time = None
+if "email_gen_count" not in st.session_state:
+    st.session_state.email_gen_count = 0
 
 # ======================== Helpers ========================
 
@@ -230,12 +238,22 @@ with st.sidebar.expander("Advanced Settings"):
 
 st.sidebar.markdown("---")
 
+# Rate limit info
+_remaining = MAX_SEARCHES_PER_SESSION - st.session_state.search_count
+st.sidebar.caption(f"Searches remaining: {_remaining}/{MAX_SEARCHES_PER_SESSION}")
+
 # Launch search
 if st.sidebar.button("🔍 Search + Score", type="primary", use_container_width=True):
     if not brand_req:
         st.sidebar.error("Please enter brand requirements first.")
     elif not platforms:
         st.sidebar.error("Please select at least one platform.")
+    elif st.session_state.search_count >= MAX_SEARCHES_PER_SESSION:
+        st.sidebar.error("Search limit reached for this session. Please refresh to start a new session.")
+    elif (st.session_state.last_search_time
+          and (datetime.now() - st.session_state.last_search_time).total_seconds() < SEARCH_COOLDOWN_SECONDS):
+        wait = int(SEARCH_COOLDOWN_SECONDS - (datetime.now() - st.session_state.last_search_time).total_seconds())
+        st.sidebar.error(f"Please wait {wait}s before searching again.")
     else:
         with st.status("Agents working...", expanded=True) as status:
             st.write("Scout Agent is searching across platforms...")
@@ -246,6 +264,8 @@ if st.sidebar.button("🔍 Search + Score", type="primary", use_container_width=
                 )
                 # Auto-switch view to the new batch
                 st.session_state.current_batch_id = new_batch_id
+                st.session_state.search_count += 1
+                st.session_state.last_search_time = datetime.now()
                 st.write(f"Found {new_count} new candidates — scoring complete.")
             except Exception as e:
                 st.error(f"Search/scoring failed: {e}")
@@ -428,23 +448,28 @@ with get_db() as db:
         ).all()
 
         with action_col2:
+            _email_limit_hit = st.session_state.email_gen_count >= MAX_EMAIL_GENERATES_PER_SESSION
             if st.button(
                 f"✍️ Generate Emails ({len(all_confirmed_no_draft)})",
                 use_container_width=True,
-                disabled=len(all_confirmed_no_draft) == 0,
-                type="primary" if all_confirmed_no_draft else "secondary",
+                disabled=len(all_confirmed_no_draft) == 0 or _email_limit_hit,
+                type="primary" if all_confirmed_no_draft and not _email_limit_hit else "secondary",
             ):
-                with st.spinner(f"Writing emails for {len(all_confirmed_no_draft)} candidates..."):
-                    try:
-                        writer = WriterAgent()
-                        asyncio.run(writer.run(
-                            brand_req or "Brand partnership",
-                            brand_name=brand_name,
-                            brand_website=brand_website
-                        ))
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Email generation failed: {e}")
+                if _email_limit_hit:
+                    st.error("Email generation limit reached for this session.")
+                else:
+                    with st.spinner(f"Writing emails for {len(all_confirmed_no_draft)} candidates..."):
+                        try:
+                            writer = WriterAgent()
+                            asyncio.run(writer.run(
+                                brand_req or "Brand partnership",
+                                brand_name=brand_name,
+                                brand_website=brand_website
+                            ))
+                            st.session_state.email_gen_count += 1
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Email generation failed: {e}")
 
         with action_col3:
             if all_confirmed_no_draft:
@@ -493,21 +518,26 @@ with get_db() as db:
                     db.commit()
                     st.toast("Draft saved")
             with btn_col2:
-                if st.button("🔄 Regenerate", key="regen_draft"):
-                    try:
-                        writer = WriterAgent()
-                        async def _regen_single():
-                            await writer.write_draft(
-                                brand_req or "Brand partnership",
-                                selected_inf,
-                                brand_name=brand_name,
-                                brand_website=brand_website
-                            )
-                        asyncio.run(_regen_single())
-                        db.commit()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Regeneration failed: {e}")
+                if st.button("🔄 Regenerate", key="regen_draft",
+                             disabled=st.session_state.email_gen_count >= MAX_EMAIL_GENERATES_PER_SESSION):
+                    if st.session_state.email_gen_count >= MAX_EMAIL_GENERATES_PER_SESSION:
+                        st.error("Email generation limit reached for this session.")
+                    else:
+                        try:
+                            writer = WriterAgent()
+                            async def _regen_single():
+                                await writer.write_draft(
+                                    brand_req or "Brand partnership",
+                                    selected_inf,
+                                    brand_name=brand_name,
+                                    brand_website=brand_website
+                                )
+                            asyncio.run(_regen_single())
+                            st.session_state.email_gen_count += 1
+                            db.commit()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Regeneration failed: {e}")
 
     # ================================================================
     # STEP 3: Export
